@@ -108,7 +108,7 @@ const getHtmlGui = () => `
 
         async function fetchData() {
             try {
-                const res = await fetch('/data');
+                const res = await fetch('data');
                 const logs = await res.json();
                 chart.data.labels = logs.map(l => new Date(l.t).toLocaleTimeString());
                 chart.data.datasets[0].data = logs.map(l => l.v);

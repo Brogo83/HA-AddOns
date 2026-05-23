@@ -12,6 +12,8 @@
   ],
   "startup": "application",
   "boot": "auto",
+  "ingress": true,
+  "ingress_port": 8099,
   "options": {
     "target_ip": "8.8.8.8",
     "ping_count": 4,
