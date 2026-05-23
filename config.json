@@ -1,6 +1,6 @@
 {
   "name": "Network Tester",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "slug": "network_tester",
   "description": "A simple network latency tester with a web GUI for Home Assistant.",
   "arch": [
