@@ -18,13 +18,15 @@
     "target_ip": "8.8.8.8",
     "ping_count": 4,
     "interval_seconds": 30,
-    "port": 8099
+    "port": 8099,
+    "extensive_logging": false
   },
   "schema": {
     "target_ip": "str",
     "ping_count": "int",
     "interval_seconds": "int",
-    "port": "port"
+    "port": "port",
+    "extensive_logging": "bool"
   },
   "ports": {
     "8099/tcp": null
@@ -33,6 +35,7 @@
     "HA_TARGET": "$target_ip",
     "HA_PING_COUNT": "$ping_count",
     "HA_INTERVAL_SECONDS": "$interval_seconds",
-    "HA_PORT": "$port"
+    "HA_PORT": "$port",
+    "HA_EXTENSIVE_LOGGING": "$extensive_logging"
   }
 }

@@ -18,6 +18,7 @@ if (fs.existsSync(optionsPath)) {
 const TARGET = options.target_ip || process.env.HA_TARGET || '8.8.8.8';
 const PING_COUNT = parseInt(options.ping_count || process.env.HA_PING_COUNT || '4', 10);
 const INTERVAL_MS = parseInt(options.interval_seconds || process.env.HA_INTERVAL_SECONDS || '30', 10) * 1000;
+const EXTENSIVE_LOGGING = options.extensive_logging === true || process.env.HA_EXTENSIVE_LOGGING === 'true';
 
 // Use /data/ for persistent storage in Home Assistant add-ons
 const LOG_FILE = '/data/network_tests.log';
@@ -58,12 +59,14 @@ function runNetworkTest() {
     
     if (avgMatch && avgMatch[1] && !isNaN(parseFloat(avgMatch[1]))) {
       const avgPing = avgMatch[1];
-      const logEntry = `[${timestamp}] Target: ${TARGET}, Avg Ping: ${avgPing} ms\n`;
+      const rawInfo = EXTENSIVE_LOGGING ? ` | Raw: ${stdout.replace(/\n/g, " ").trim()}` : '';
+      const logEntry = `[${timestamp}] Target: ${TARGET}, Avg Ping: ${avgPing} ms${rawInfo}\n`;
       
       fs.appendFileSync(LOG_FILE, logEntry);
       console.log(logEntry.trim());
     } else {
-      const warnMsg = `[${timestamp}] Ping succeeded but summary stats could not be parsed. Raw Output: ${stdout.replace(/\n/g, " ")}\n`;
+      const rawOutput = EXTENSIVE_LOGGING ? `. Raw Output: ${stdout.replace(/\n/g, " ").trim()}` : '';
+      const warnMsg = `[${timestamp}] Ping succeeded but summary stats could not be parsed${rawOutput}\n`;
       fs.appendFileSync(LOG_FILE, warnMsg);
       console.warn(warnMsg.trim());
     }
