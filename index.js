@@ -40,9 +40,9 @@ function runNetworkTest() {
   const timestamp = new Date().toISOString();
   
   // Executing 'ping -c 4' for Unix-based systems
-  exec(`ping -c ${PING_COUNT} ${TARGET}`, (error, stdout) => {
+  exec(`ping -c ${PING_COUNT} ${TARGET}`, (error, stdout, stderr) => {
     if (error) {
-      const errorLine = `[${timestamp}] Error pinging ${TARGET}: ${error.message}\n`;
+      const errorLine = `[${timestamp}] Error pinging ${TARGET}: ${error.message}. Stderr: ${stderr.trim()}\n`;
       fs.appendFileSync(LOG_FILE, errorLine);
       console.error(errorLine.trim());
       return;
@@ -60,8 +60,9 @@ function runNetworkTest() {
       fs.appendFileSync(LOG_FILE, logEntry);
       console.log(logEntry.trim());
     } else {
-      const warnMsg = `[${timestamp}] Ping succeeded but summary stats could not be parsed.\n`;
+      const warnMsg = `[${timestamp}] Ping succeeded but summary stats could not be parsed. Raw Output: ${stdout.replace(/\n/g, " ")}\n`;
       fs.appendFileSync(LOG_FILE, warnMsg);
+      console.warn(warnMsg.trim());
     }
   });
 }
