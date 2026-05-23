@@ -48,8 +48,12 @@ function runNetworkTest() {
       console.error(errorLine.trim());
       return;
     }
-    console.log(`Ping`);
-    console.log(stdout);
+    if (EXTENSIVE_LOGGING)
+    {
+      console.log(`Ping`);
+      console.log(stdout);
+    }
+  
 
 
     // Parsing the summary line for the average RTT
