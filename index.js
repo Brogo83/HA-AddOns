@@ -21,8 +21,12 @@ const INTERVAL_MS = parseInt(options.interval_seconds || process.env.HA_INTERVAL
 const LOG_FILE = path.join(__dirname, 'network_tests.log');
 
 // Ensure PORT is a valid number and handle potential NaN from env variables or malformed options
-const rawPort = options.port || process.env.HA_PORT || '8099';
-const PORT = isNaN(parseInt(rawPort, 10)) ? 8099 : parseInt(rawPort, 10);
+const rawPort = options.port || process.env.HA_PORT || '8099'; // Get the raw port value
+console.log(`DEBUG: rawPort = '${rawPort}' (type: ${typeof rawPort})`);
+const parsedPort = parseInt(rawPort, 10); // Attempt to parse it
+console.log(`DEBUG: parsedPort = ${parsedPort} (type: ${typeof parsedPort})`);
+const PORT = isNaN(parsedPort) ? 8099 : parsedPort; // Use default if parsing failed
+console.log(`DEBUG: Final PORT = ${PORT} (type: ${typeof PORT})`);
 
 /**
  * Executes the ping test, parses the output for average RTT, 
