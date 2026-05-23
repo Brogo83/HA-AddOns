@@ -4,11 +4,25 @@ const http = require('http');
 const path = require('path');
 
 // Configuration
-const TARGET = process.env.HA_TARGET || '8.8.8.8';
-const PING_COUNT = parseInt(process.env.HA_PING_COUNT || '4', 10);
-const INTERVAL_MS = parseInt(process.env.HA_INTERVAL_SECONDS || '30', 10) * 1000; // 30 seconds
+// Home Assistant stores user configuration in /data/options.json
+const optionsPath = '/data/options.json';
+let options = {};
+if (fs.existsSync(optionsPath)) {
+  try {
+    options = JSON.parse(fs.readFileSync(optionsPath, 'utf8'));
+  } catch (err) {
+    console.error('Failed to parse options.json, falling back to environment variables', err);
+  }
+}
+
+const TARGET = options.target_ip || process.env.HA_TARGET || '8.8.8.8';
+const PING_COUNT = parseInt(options.ping_count || process.env.HA_PING_COUNT || '4', 10);
+const INTERVAL_MS = parseInt(options.interval_seconds || process.env.HA_INTERVAL_SECONDS || '30', 10) * 1000;
 const LOG_FILE = path.join(__dirname, 'network_tests.log');
-const PORT = parseInt(process.env.HA_PORT || '8099', 10); // Default to 8099 for HA add-ons
+
+// Ensure PORT is a valid number and handle potential NaN from env variables or malformed options
+const rawPort = options.port || process.env.HA_PORT || '8099';
+const PORT = isNaN(parseInt(rawPort, 10)) ? 8099 : parseInt(rawPort, 10);
 
 /**
  * Executes the ping test, parses the output for average RTT, 
@@ -28,7 +42,8 @@ function runNetworkTest() {
 
     // Parsing the summary line for the average RTT
     // Example line: rtt min/avg/max/mdev = 14.501/16.234/19.112/1.456 ms
-    const avgMatch = stdout.match(/avg\/max\/mdev = [\d.]+\/([\d.]+)/);
+    // Optimized to work with both iputils and BusyBox ping (standard in Alpine Linux)
+    const avgMatch = stdout.match(/(?:avg|avg\/max\/mdev) = [\d.]+\/([\d.]+)/);
     
     if (avgMatch && avgMatch[1]) {
       const avgPing = avgMatch[1];

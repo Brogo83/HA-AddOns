@@ -1,2 +1,2 @@
-network_tests.log
 *.log
+node_modules/
