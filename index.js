@@ -47,6 +47,9 @@ function runNetworkTest() {
       console.error(errorLine.trim());
       return;
     }
+    console.log(`Ping`);
+    console.log(stdout);
+
 
     // Parsing the summary line for the average RTT
     // BusyBox (Alpine): round-trip min/avg/max = 14.501/16.234/19.112 ms
