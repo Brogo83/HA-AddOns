@@ -18,7 +18,11 @@ if (fs.existsSync(optionsPath)) {
 const TARGET = options.target_ip || process.env.HA_TARGET || '8.8.8.8';
 const PING_COUNT = parseInt(options.ping_count || process.env.HA_PING_COUNT || '4', 10);
 const INTERVAL_MS = parseInt(options.interval_seconds || process.env.HA_INTERVAL_SECONDS || '30', 10) * 1000;
-const LOG_FILE = path.join(__dirname, 'network_tests.log');
+
+// Use /data/ for persistent storage in Home Assistant add-ons
+const LOG_FILE = '/data/network_tests.log';
+// Ensure the file exists so the first read doesn't fail
+if (!fs.existsSync(LOG_FILE)) fs.writeFileSync(LOG_FILE, '');
 
 // Ensure PORT is a valid number and handle potential NaN from env variables or malformed options
 const rawPort = options.port || process.env.HA_PORT || '8099'; // Get the raw port value
@@ -45,11 +49,11 @@ function runNetworkTest() {
     }
 
     // Parsing the summary line for the average RTT
-    // Example line: rtt min/avg/max/mdev = 14.501/16.234/19.112/1.456 ms
-    // Optimized to work with both iputils and BusyBox ping (standard in Alpine Linux)
-    const avgMatch = stdout.match(/(?:avg|avg\/max\/mdev) = [\d.]+\/([\d.]+)/);
+    // BusyBox (Alpine): round-trip min/avg/max = 14.501/16.234/19.112 ms
+    // iputils (Debian): rtt min/avg/max/mdev = 14.501/16.234/19.112/1.456 ms
+    const avgMatch = stdout.match(/=\s+[\d.]+\/([\d.]+)/);
     
-    if (avgMatch && avgMatch[1]) {
+    if (avgMatch && avgMatch[1] && !isNaN(parseFloat(avgMatch[1]))) {
       const avgPing = avgMatch[1];
       const logEntry = `[${timestamp}] Target: ${TARGET}, Avg Ping: ${avgPing} ms\n`;
       
@@ -137,8 +141,10 @@ const getHtmlGui = () => `
 
 // HTTP Server with Routing
 const server = http.createServer((req, res) => {
-  if (req.url === '/data') {
+  // Handle /data and Ingress-proxied /data paths
+  if (req.url.endsWith('/data')) {
     // API Endpoint: Parse the log file and return JSON
+    console.log('API Request: Fetching log data...');
     if (!fs.existsSync(LOG_FILE)) return res.end(JSON.stringify([]));
     
     const raw = fs.readFileSync(LOG_FILE, 'utf8');
