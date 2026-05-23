@@ -1,0 +1,142 @@
+const { exec } = require('child_process');
+const fs = require('fs');
+const http = require('http');
+const path = require('path');
+
+// Configuration
+const TARGET = process.env.HA_TARGET || '8.8.8.8';
+const PING_COUNT = parseInt(process.env.HA_PING_COUNT || '4', 10);
+const INTERVAL_MS = parseInt(process.env.HA_INTERVAL_SECONDS || '30', 10) * 1000; // 30 seconds
+const LOG_FILE = path.join(__dirname, 'network_tests.log');
+const PORT = parseInt(process.env.HA_PORT || '8099', 10); // Default to 8099 for HA add-ons
+
+/**
+ * Executes the ping test, parses the output for average RTT, 
+ * and appends the result to the log file.
+ */
+function runNetworkTest() {
+  const timestamp = new Date().toISOString();
+  
+  // Executing 'ping -c 4' for Unix-based systems
+  exec(`ping -c ${PING_COUNT} ${TARGET}`, (error, stdout) => {
+    if (error) {
+      const errorLine = `[${timestamp}] Error pinging ${TARGET}: ${error.message}\n`;
+      fs.appendFileSync(LOG_FILE, errorLine);
+      console.error(errorLine.trim());
+      return;
+    }
+
+    // Parsing the summary line for the average RTT
+    // Example line: rtt min/avg/max/mdev = 14.501/16.234/19.112/1.456 ms
+    const avgMatch = stdout.match(/avg\/max\/mdev = [\d.]+\/([\d.]+)/);
+    
+    if (avgMatch && avgMatch[1]) {
+      const avgPing = avgMatch[1];
+      const logEntry = `[${timestamp}] Target: ${TARGET}, Avg Ping: ${avgPing} ms\n`;
+      
+      fs.appendFileSync(LOG_FILE, logEntry);
+      console.log(logEntry.trim());
+    } else {
+      const warnMsg = `[${timestamp}] Ping succeeded but summary stats could not be parsed.\n`;
+      fs.appendFileSync(LOG_FILE, warnMsg);
+    }
+  });
+}
+
+// Schedule test every 30 seconds and run an initial one immediately
+setInterval(runNetworkTest, INTERVAL_MS);
+runNetworkTest();
+
+// HTML Dashboard Template
+const getHtmlGui = () => `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Network Tester Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: -apple-system, sans-serif; background: #f0f2f5; padding: 20px; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 1000px; margin: auto; }
+        h1 { color: #1a73e8; margin-top: 0; }
+        #chart-wrapper { height: 400px; margin-top: 20px; }
+        .stats { color: #5f6368; font-size: 0.9em; text-align: right; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Network Latency: ${TARGET}</h1>
+        <div class="stats" id="last-update">Waiting for data...</div>
+        <div id="chart-wrapper"><canvas id="pingChart"></canvas></div>
+    </div>
+    <script>
+        const ctx = document.getElementById('pingChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: [], datasets: [{
+                label: 'Avg Ping (ms)',
+                data: [],
+                borderColor: '#1a73e8',
+                backgroundColor: 'rgba(26, 115, 232, 0.1)',
+                fill: true,
+                tension: 0.3
+            }]},
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: false, min: undefined, max: undefined } }
+            }
+        });
+
+        async function fetchData() {
+            try {
+                const res = await fetch('/data');
+                const logs = await res.json();
+                chart.data.labels = logs.map(l => new Date(l.t).toLocaleTimeString());
+                chart.data.datasets[0].data = logs.map(l => l.v);
+                
+                if (logs.length > 0) {
+                    const values = logs.map(l => l.v);
+                    // Ensure there are values to calculate min/max from
+                    const minVal = values.length > 0 ? Math.min(...values) : 0;
+                    const maxVal = values.length > 0 ? Math.max(...values) : 0;
+                    
+                    // Set min/max only if there are actual values
+                    chart.options.scales.y.min = Math.floor(minVal - 2);
+                    chart.options.scales.y.max = Math.ceil(maxVal + 5);
+                }
+
+                chart.update('none');
+                document.getElementById('last-update').innerText = 'Last updated: ' + new Date().toLocaleTimeString();
+            } catch (e) { console.error('Update failed', e); }
+        }
+
+        setInterval(fetchData, 5000);
+        fetchData();
+    </script>
+</body>
+</html>`;
+
+// HTTP Server with Routing
+const server = http.createServer((req, res) => {
+  if (req.url === '/data') {
+    // API Endpoint: Parse the log file and return JSON
+    if (!fs.existsSync(LOG_FILE)) return res.end(JSON.stringify([]));
+    
+    const raw = fs.readFileSync(LOG_FILE, 'utf8');
+    const data = raw.trim().split('\n').map(line => {
+      const match = line.match(/\[(.*?)\] .*? Avg Ping: (.*?) ms/);
+      return match ? { t: match[1], v: parseFloat(match[2]) } : null;
+    }).filter(Boolean);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(data.slice(-20))); // Return last 20 points
+  }
+
+  // Root: Serve the HTML GUI
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.end(getHtmlGui());
+});
+
+server.listen(PORT, () => {
+  console.log(`GUI available at http://localhost:${PORT}`); // This will be logged by HA
+});

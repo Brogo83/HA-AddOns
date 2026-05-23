@@ -1,0 +1,36 @@
+{
+  "name": "Network Tester",
+  "version": "1.0.0",
+  "slug": "network_tester",
+  "description": "A simple network latency tester with a web GUI for Home Assistant.",
+  "arch": [
+    "aarch64",
+    "amd64",
+    "armhf",
+    "armv7",
+    "i386"
+  ],
+  "startup": "application",
+  "boot": "auto",
+  "options": {
+    "target_ip": "8.8.8.8",
+    "ping_count": 4,
+    "interval_seconds": 30,
+    "port": 8099
+  },
+  "schema": {
+    "target_ip": "str",
+    "ping_count": "int",
+    "interval_seconds": "int",
+    "port": "port"
+  },
+  "ports": {
+    "8099/tcp": null
+  },
+  "environment": {
+    "HA_TARGET": "$target_ip",
+    "HA_PING_COUNT": "$ping_count",
+    "HA_INTERVAL_SECONDS": "$interval_seconds",
+    "HA_PORT": "$port"
+  }
+}

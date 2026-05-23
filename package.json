@@ -1,0 +1,10 @@
+{
+  "name": "network-tester",
+  "version": "1.0.0",
+  "description": "Network latency monitor with HTML dashboard",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "license": "MIT"
+}
