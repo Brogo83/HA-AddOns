@@ -2,6 +2,7 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
+const sqlite3 = require('sqlite3').verbose();
 
 // Configuration
 // Home Assistant stores user configuration in /data/options.json
@@ -20,10 +21,14 @@ const PING_COUNT = parseInt(options.ping_count || process.env.HA_PING_COUNT || '
 const INTERVAL_MS = parseInt(options.interval_seconds || process.env.HA_INTERVAL_SECONDS || '30', 10) * 1000;
 const EXTENSIVE_LOGGING = options.extensive_logging === true || process.env.HA_EXTENSIVE_LOGGING === 'true';
 
-// Use /data/ for persistent storage in Home Assistant add-ons
-const LOG_FILE = '/data/network_tests.log';
-// Ensure the file exists so the first read doesn't fail
-if (!fs.existsSync(LOG_FILE)) fs.writeFileSync(LOG_FILE, '');
+// Database Setup
+const DB_PATH = '/data/network_tester.db';
+const db = new sqlite3.Database(DB_PATH);
+
+// Initialize Database
+db.serialize(() => {
+  db.run("CREATE TABLE IF NOT EXISTS pings (timestamp TEXT, value REAL)");
+});
 
 // Ensure PORT is a valid number and handle potential NaN from env variables or malformed options
 const rawPort = options.port || process.env.HA_PORT || '8099'; // Get the raw port value
@@ -43,36 +48,32 @@ function runNetworkTest() {
   // Executing 'ping -c 4' for Unix-based systems
   exec(`ping -c ${PING_COUNT} ${TARGET}`, (error, stdout, stderr) => {
     if (error) {
-      const errorLine = `[${timestamp}] Error pinging ${TARGET}: ${error.message}. Stderr: ${stderr.trim()}\n`;
-      fs.appendFileSync(LOG_FILE, errorLine);
-      console.error(errorLine.trim());
+      console.error(`[${timestamp}] Error pinging ${TARGET}: ${error.message}`);
       return;
     }
+
     if (EXTENSIVE_LOGGING)
     {
       console.log(`Ping`);
       console.log(stdout);
     }
   
-
-
     // Parsing the summary line for the average RTT
-    // BusyBox (Alpine): round-trip min/avg/max = 14.501/16.234/19.112 ms
-    // iputils (Debian): rtt min/avg/max/mdev = 14.501/16.234/19.112/1.456 ms
     const avgMatch = stdout.match(/=\s+[\d.]+\/([\d.]+)/);
     
     if (avgMatch && avgMatch[1] && !isNaN(parseFloat(avgMatch[1]))) {
-      const avgPing = avgMatch[1];
-      const rawInfo = EXTENSIVE_LOGGING ? ` | Raw: ${stdout.replace(/\n/g, " ").trim()}` : '';
-      const logEntry = `[${timestamp}] Target: ${TARGET}, Avg Ping: ${avgPing} ms${rawInfo}\n`;
+      const avgPing = parseFloat(avgMatch[1]);
       
-      fs.appendFileSync(LOG_FILE, logEntry);
-      console.log(logEntry.trim());
+      db.run("INSERT INTO pings (timestamp, value) VALUES (?, ?)", [timestamp, avgPing], (err) => {
+        if (err) console.error("DB Insert Error:", err.message);
+        
+        // Prune database to keep only last 1000 entries
+        db.run("DELETE FROM pings WHERE timestamp NOT IN (SELECT timestamp FROM pings ORDER BY timestamp DESC LIMIT 1000)");
+      });
+
+      console.log(`[${timestamp}] Target: ${TARGET}, Avg Ping: ${avgPing} ms`);
     } else {
-      const rawOutput = EXTENSIVE_LOGGING ? `. Raw Output: ${stdout.replace(/\n/g, " ").trim()}` : '';
-      const warnMsg = `[${timestamp}] Ping succeeded but summary stats could not be parsed${rawOutput}\n`;
-      fs.appendFileSync(LOG_FILE, warnMsg);
-      console.warn(warnMsg.trim());
+      if (EXTENSIVE_LOGGING) console.warn(`[${timestamp}] Ping succeeded but summary stats could not be parsed.`);
     }
   });
 }
@@ -92,14 +93,27 @@ const getHtmlGui = () => `
         body { font-family: -apple-system, sans-serif; background: #f0f2f5; padding: 20px; }
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 1000px; margin: auto; }
         h1 { color: #1a73e8; margin-top: 0; }
-        #chart-wrapper { height: 400px; margin-top: 20px; }
-        .stats { color: #5f6368; font-size: 0.9em; text-align: right; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        #chart-wrapper { height: 400px; }
+        .controls { display: flex; align-items: center; gap: 10px; color: #5f6368; font-size: 0.9em; }
+        select { padding: 5px; border-radius: 4px; border: 1px solid #ccc; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h1>Network Latency: ${TARGET}</h1>
-        <div class="stats" id="last-update">Waiting for data...</div>
+        <div class="header">
+            <h1>Latency: ${TARGET}</h1>
+            <div class="controls">
+                <span>Show:</span>
+                <select id="limitSelect" onchange="fetchData()">
+                    <option value="20">Last 20</option>
+                    <option value="100">Last 100</option>
+                    <option value="500">Last 500</option>
+                    <option value="1000">Last 1000</option>
+                </select>
+                <div id="last-update">...</div>
+            </div>
+        </div>
         <div id="chart-wrapper"><canvas id="pingChart"></canvas></div>
     </div>
     <script>
@@ -123,7 +137,8 @@ const getHtmlGui = () => `
 
         async function fetchData() {
             try {
-                const res = await fetch('data');
+                const limit = document.getElementById('limitSelect').value;
+                const res = await fetch('data?limit=' + limit);
                 const logs = await res.json();
                 chart.data.labels = logs.map(l => new Date(l.t).toLocaleTimeString());
                 chart.data.datasets[0].data = logs.map(l => l.v);
@@ -153,19 +168,16 @@ const getHtmlGui = () => `
 // HTTP Server with Routing
 const server = http.createServer((req, res) => {
   // Handle /data and Ingress-proxied /data paths
-  if (req.url.endsWith('/data')) {
-    // API Endpoint: Parse the log file and return JSON
-    console.log('API Request: Fetching log data...');
-    if (!fs.existsSync(LOG_FILE)) return res.end(JSON.stringify([]));
+  if (req.url.includes('/data')) {
+    const urlParams = new URL(req.url, `http://${req.headers.host}`);
+    const limit = parseInt(urlParams.searchParams.get('limit')) || 20;
     
-    const raw = fs.readFileSync(LOG_FILE, 'utf8');
-    const data = raw.trim().split('\n').map(line => {
-      const match = line.match(/\[(.*?)\] .*? Avg Ping: (.*?) ms/);
-      return match ? { t: match[1], v: parseFloat(match[2]) } : null;
-    }).filter(Boolean);
-
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify(data.slice(-20))); // Return last 20 points
+    db.all("SELECT timestamp as t, value as v FROM pings ORDER BY timestamp DESC LIMIT ?", [limit], (err, rows) => {
+      if (err) return res.end(JSON.stringify([]));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(rows.reverse()));
+    });
+    return;
   }
 
   // Root: Serve the HTML GUI
