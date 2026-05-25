@@ -458,21 +458,8 @@ const getHtmlGui = () => `
 
 // HTTP Server with Routing
 const server = http.createServer((req, res) => {
-  // Handle /data and Ingress-proxied /data paths
-  if (req.url.includes('/data')) {
-    const urlParams = new URL(req.url, `http://${req.headers.host}`);
-    const limit = parseInt(urlParams.searchParams.get('limit')) || 20;
-    
-    db.all("SELECT timestamp as t, value as v FROM pings ORDER BY timestamp DESC LIMIT ?", [limit], (err, rows) => {
-      if (err) return res.end(JSON.stringify([]));
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(rows.reverse()));
-    });
-    return;
-  }
-
   // API Endpoint: Trigger speed test
-  if (req.url === '/speedtest/run' && req.method === 'POST') {
+  if (req.url.includes('/speedtest/run') && req.method === 'POST') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     runSpeedTest().then(result => {
       res.end(JSON.stringify(result));
@@ -491,6 +478,21 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+
+  // Handle /data and Ingress-proxied /data paths (Ping data)
+  // This is placed last because it is the least specific route
+  if (req.url.includes('/data')) {
+    const urlParams = new URL(req.url, `http://${req.headers.host}`);
+    const limit = parseInt(urlParams.searchParams.get('limit')) || 20;
+    
+    db.all("SELECT timestamp as t, value as v FROM pings ORDER BY timestamp DESC LIMIT ?", [limit], (err, rows) => {
+      if (err) return res.end(JSON.stringify([]));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(rows.reverse()));
+    });
+    return;
+  }
+
   // Root: Serve the HTML GUI
   res.writeHead(200, { 'Content-Type': 'text/html' });
   res.end(getHtmlGui());
