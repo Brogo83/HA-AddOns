@@ -22,8 +22,10 @@ const PING_COUNT = parseInt(options.ping_count || process.env.HA_PING_COUNT || '
 const INTERVAL_MS = parseInt(options.interval_seconds || process.env.HA_INTERVAL_SECONDS || '30', 10) * 1000;
 const EXTENSIVE_LOGGING = options.extensive_logging === true || process.env.HA_EXTENSIVE_LOGGING === 'true';
 
-// Database Setup
-const DB_PATH = '/data/network_tester.db';
+// Database Setup: Use /data/ for HA, or local directory for development
+const dataDir = fs.existsSync('/data') ? '/data' : __dirname;
+const DB_PATH = path.join(dataDir, 'network_tester.db');
+
 const db = new sqlite3.Database(DB_PATH);
 
 // Initialize Database

@@ -1,2 +1,3 @@
 *.log
+network_tester.db
 node_modules/
