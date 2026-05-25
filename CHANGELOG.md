@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.3
+- Added speedtest
+
 ## 1.0.2
 - Switched from text logging to SQLite database for better performance.
 - Optimized UI: Added Dark Mode support.
