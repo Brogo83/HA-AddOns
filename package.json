@@ -1,6 +1,6 @@
 {
   "name": "network-tester",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Network latency monitor with HTML dashboard",
   "main": "index.js",
   "scripts": {
@@ -8,6 +8,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "speedtest-net": "^2.2.0"
   }
 }
