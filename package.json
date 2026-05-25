@@ -8,6 +8,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "speedtest-net": "^2.2.0"
   }
 }
